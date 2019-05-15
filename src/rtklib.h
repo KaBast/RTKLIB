@@ -46,6 +46,8 @@ extern "C" {
 
 /* constants -----------------------------------------------------------------*/
 
+#define TRACE
+
 #define VER_RTKLIB  "2.4.2"             /* library version */
 
 #define PATCH_LEVEL "p13"               /* patch level */
@@ -307,6 +309,10 @@ extern "C" {
 #define PMODE_PPP_KINEMA 6              /* positioning mode: PPP-kinemaric */
 #define PMODE_PPP_STATIC 7              /* positioning mode: PPP-static */
 #define PMODE_PPP_FIXED 8               /* positioning mode: PPP-fixed */
+#define PMODE_AMB_FUNC 9                /* positioning mode: Ambiguity Function -- Kay Bastian*/
+
+
+
 
 #define SOLF_LLH    0                   /* solution format: lat/lon/height */
 #define SOLF_XYZ    1                   /* solution format: x/y/z-ecef */
@@ -322,7 +328,8 @@ extern "C" {
 #define SOLQ_SINGLE 5                   /* solution status: single */
 #define SOLQ_PPP    6                   /* solution status: PPP */
 #define SOLQ_DR     7                   /* solution status: dead reconing */
-#define MAXSOLQ     7                   /* max number of solution status */
+#define SOLQ_AMB	8					/* solution status : Ambiguity Function -- Kay Bastian*/
+#define MAXSOLQ     8                   /* max number of solution status */
 
 #define TIMES_GPST  0                   /* time system: gps time */
 #define TIMES_UTC   1                   /* time system: utc */

@@ -61,7 +61,7 @@ static const int solq_nmea[]={  /* nmea quality flags to rtklib sol quality */
     /*  6=estimated (dead reckoning), 7=manual input, 8=simulation */
     
     SOLQ_NONE ,SOLQ_SINGLE, SOLQ_DGPS, SOLQ_PPP , SOLQ_FIX,
-    SOLQ_FLOAT,SOLQ_DR    , SOLQ_NONE, SOLQ_NONE, SOLQ_NONE
+    SOLQ_FLOAT,SOLQ_DR    , SOLQ_NONE, SOLQ_NONE, SOLQ_NONE, SOLQ_AMB,
 };
 /* solution option to field separator ----------------------------------------*/
 static const char *opt2sep(const solopt_t *opt)
@@ -1273,7 +1273,7 @@ extern int outprcopts(unsigned char *buff, const prcopt_t *opt)
 {
     const int sys[]={SYS_GPS,SYS_GLO,SYS_GAL,SYS_QZS,SYS_SBS,0};
     const char *s1[]={"single","dgps","kinematic","static","moving-base","fixed",
-                 "ppp-kinematic","ppp-static","ppp-fixed",""};
+                 "ppp-kinematic","ppp-static","ppp-fixed","Ambiguity-Function",""};
     const char *s2[]={"L1","L1+L2","L1+L2+L5","L1+L2+L5+L6","L1+L2+L5+L6+L7",
                       "L1+L2+L5+L6+L7+L8",""};
     const char *s3[]={"forward","backward","combined"};

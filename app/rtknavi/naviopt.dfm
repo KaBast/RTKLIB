@@ -192,9 +192,7 @@ object OptDialog: TOptDialog
         Height = 21
         Style = csDropDownList
         DropDownCount = 10
-        ItemIndex = 0
         TabOrder = 0
-        Text = 'Single'
         OnChange = PosModeChange
         Items.Strings = (
           'Single'
@@ -205,7 +203,8 @@ object OptDialog: TOptDialog
           'Fixed'
           'PPP Kinematic'
           'PPP Static'
-          'PPP Fixed')
+          'PPP Fixed'
+          'Ambiguity Function')
       end
       object Freq: TComboBox
         Left = 221
@@ -914,10 +913,6 @@ object OptDialog: TOptDialog
     object TabSheet4: TTabSheet
       Caption = 'S&tatistics'
       ImageIndex = 3
-      ExplicitLeft = 0
-      ExplicitTop = 0
-      ExplicitWidth = 0
-      ExplicitHeight = 0
       object Label29: TLabel
         Left = 34
         Top = 213
@@ -1384,10 +1379,6 @@ object OptDialog: TOptDialog
     object TabSheet7: TTabSheet
       Caption = '&Files'
       ImageIndex = 6
-      ExplicitLeft = 0
-      ExplicitTop = 0
-      ExplicitWidth = 0
-      ExplicitHeight = 0
       object Label1: TLabel
         Left = 6
         Top = 93
