@@ -1,11 +1,22 @@
 ﻿cl : Befehlszeile warning D9035: Die Option "Gm" ist veraltet und wird in einer der nächsten Versionen entfernt.
   rtkpos.c
 C:\Users\Kay Bastian\source\repos\RTKLIB\src\rtkpos.c(1636): warning C4013: "AmbiguityFunction" undefiniert; Annahme: extern mit Rückgabetyp int
-C:\Users\Kay Bastian\source\repos\RTKLIB\src\rtkpos.c(1938): warning C4133: "=": Inkompatible Typen - von "double *" zu "int *"
-C:\Users\Kay Bastian\source\repos\RTKLIB\src\rtkpos.c(1989): warning C4013: "AmbFunc_ddres" undefiniert; Annahme: extern mit Rückgabetyp int
-C:\Users\Kay Bastian\source\repos\RTKLIB\src\rtkpos.c(1896): warning C4101: "bl": Unreferenzierte lokale Variable
-C:\Users\Kay Bastian\source\repos\RTKLIB\src\rtkpos.c(1896): warning C4101: "Ambxz": Unreferenzierte lokale Variable
-C:\Users\Kay Bastian\source\repos\RTKLIB\src\rtkpos.c(1897): warning C4101: "konvGewicht": Unreferenzierte lokale Variable
-C:\Users\Kay Bastian\source\repos\RTKLIB\src\rtkpos.c(1896): warning C4101: "Ambxx": Unreferenzierte lokale Variable
-C:\Users\Kay Bastian\source\repos\RTKLIB\src\rtkpos.c(1896): warning C4101: "Ambxy": Unreferenzierte lokale Variable
+C:\Users\Kay Bastian\source\repos\RTKLIB\src\rtkpos.c(1944): warning C4133: "=": Inkompatible Typen - von "double *" zu "int *"
+C:\Users\Kay Bastian\source\repos\RTKLIB\src\rtkpos.c(1999): warning C4013: "AmbFunc_ddres" undefiniert; Annahme: extern mit Rückgabetyp int
+C:\Users\Kay Bastian\source\repos\RTKLIB\src\rtkpos.c(1903): warning C4101: "bl": Unreferenzierte lokale Variable
+C:\Users\Kay Bastian\source\repos\RTKLIB\src\rtkpos.c(1903): warning C4101: "Ambxz": Unreferenzierte lokale Variable
+C:\Users\Kay Bastian\source\repos\RTKLIB\src\rtkpos.c(1904): warning C4101: "konvGewicht": Unreferenzierte lokale Variable
+C:\Users\Kay Bastian\source\repos\RTKLIB\src\rtkpos.c(1903): warning C4101: "Ambxx": Unreferenzierte lokale Variable
+C:\Users\Kay Bastian\source\repos\RTKLIB\src\rtkpos.c(1903): warning C4101: "Ambxy": Unreferenzierte lokale Variable
+C:\Users\Kay Bastian\source\repos\RTKLIB\src\rtkpos.c(2460): warning C4133: "=": Inkompatible Typen - von "double *" zu "int *"
+C:\Users\Kay Bastian\source\repos\RTKLIB\src\rtkpos.c(2489): warning C4013: "zdres_Widelane" undefiniert; Annahme: extern mit Rückgabetyp int
+C:\Users\Kay Bastian\source\repos\RTKLIB\src\rtkpos.c(2519): warning C4013: "AmbFunc_ddres_Widelane" undefiniert; Annahme: extern mit Rückgabetyp int
+C:\Users\Kay Bastian\source\repos\RTKLIB\src\rtkpos.c(2420): warning C4101: "bl": Unreferenzierte lokale Variable
+C:\Users\Kay Bastian\source\repos\RTKLIB\src\rtkpos.c(2420): warning C4101: "Ambxz": Unreferenzierte lokale Variable
+C:\Users\Kay Bastian\source\repos\RTKLIB\src\rtkpos.c(2421): warning C4101: "konvGewicht": Unreferenzierte lokale Variable
+C:\Users\Kay Bastian\source\repos\RTKLIB\src\rtkpos.c(2420): warning C4101: "Ambxx": Unreferenzierte lokale Variable
+C:\Users\Kay Bastian\source\repos\RTKLIB\src\rtkpos.c(2420): warning C4101: "Ambxy": Unreferenzierte lokale Variable
+C:\Users\Kay Bastian\source\repos\RTKLIB\src\rtkpos.c(2633): warning C4101: "f2": Unreferenzierte lokale Variable
+C:\Users\Kay Bastian\source\repos\RTKLIB\src\rtkpos.c(2633): warning C4101: "f1": Unreferenzierte lokale Variable
+C:\Users\Kay Bastian\source\repos\RTKLIB\src\rtkpos.c(2634): warning C4101: "i": Unreferenzierte lokale Variable
   msc.vcxproj -> C:\Users\Kay Bastian\source\repos\RTKLIB\app\rnx2rtkp\msc\Debug\rnx2rtkp.exe

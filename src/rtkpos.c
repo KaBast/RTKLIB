@@ -1640,6 +1640,13 @@ static int relpos(rtk_t *rtk, const obsd_t *obs, int nu, int nr,
 			if (stat != SOLQ_FIX) { rtk->nfix = 0; }
 			stat = SOLQ_AMB;
 		}
+		/*if (AmbiguityFunction_Widelane(rtk, stat, obs, nu, rs, dts, svh, nav, opt, dt, sat, iu, ir, ns, nf, n, y, e, azel, nr))
+		{
+			//Falls keine Fix Lösung berechnet wurde anpassen der entsprechenden Variable
+			//Muss hier geschehen, da 'stat' anschließend geändert wird
+			if (stat != SOLQ_FIX) { rtk->nfix = 0; }
+			stat = SOLQ_AMB;
+		}*/
 	}
 
     /* save solution status */
@@ -1895,7 +1902,6 @@ extern int AmbiguityFunction(rtk_t* rtk, const int stat, const obsd_t* obs, int 
 	double* A, * l, * xneu, * Pneu, * PGewicht, * verb;	//Matrizen und Vektoren der Ausgleichung
 	double v1, v2, bl, blx, bly, blz, ax, ay, az, test, Ambxx, Ambxy, Ambxz;	//Double Werte
 	int konvAusgl, konvGewicht, ii, MatSize = 0, Matii =0, hh;	//Laufvariablen und temporäre Objekte
-	int ErsterDurchlauf = 1;	//Variable, welche angibt ob es der erste Schleifendurchlauf ist
 	
 	//Variablen der Messwerte/RTKLIB
 	double tt = fabs(rtk->tt);
@@ -1943,6 +1949,10 @@ extern int AmbiguityFunction(rtk_t* rtk, const int stat, const obsd_t* obs, int 
 	blx = Ambx[0] - rtk->rb[0];
 	bly = Ambx[1] - rtk->rb[1];
 	blz = Ambx[2] - rtk->rb[2];
+
+	//blx = 4146334.3430 - rtk->rb[0];
+	//bly = 611809.0308 - rtk->rb[1];
+	//blz = 4791825.5637 - rtk->rb[2];
 
 	//Schleife für die Konvergenz der Ausgleichung
 	//Abbruchkriterium:
@@ -2032,7 +2042,6 @@ extern int AmbiguityFunction(rtk_t* rtk, const int stat, const obsd_t* obs, int 
 		//Berechnung der Gewichteten Designmatrix für die L1-Norm
 		//Berechnet wird A*P, wobei A die transponierte Designmatrix ist
 		matmul("NN", 3, 2 * Matii, 2 * Matii, 1.0, A, PGewicht, 0.0, A); // A = A*P
-		A[0]; A[1]; A[2]; A[3]; A[4]; A[5], A[6]; A[7]; A[15];
 
 		//Kleinste Quadrate Ausgleichung
 		//Zu beachten: A ist die transponierte Design Matrix
@@ -2395,4 +2404,511 @@ static int AmbFunc_zdres(int base, const obsd_t* obs, int n, const double* rs,
 	return 1;
 }
 
+extern int AmbiguityFunction_Widelane(rtk_t* rtk, const int stat, const obsd_t* obs, int nu, const double* rs,
+	const double* dts, const int* svh, const nav_t* nav, const prcopt_t* opt,
+	double dt, const int* sat,
+	const int* iu, const int* ir, int ns, int nf, int n, double* yalt, double* ealt, double* azelalt,
+	int nr)
+{
+	//Variablen der Ausgleichung
+	double Lambda = 0.8619; //Wellenlänge der Widelane
+	nf = 1; //Wegen Linearkombination
+	double dx = 0, dy = 0, dz = 0;	//Unbekannte der Ausgleichung
+	int MAXKONV = 20, MAXGEWICHTE = 100;  //Wert der die maximale Schleifendurchgänge vorgibt
+	double KONVGRENZE = 0.005;	//Abbruchkriterium der Ausgleichung
+	double* A, * l, * xneu, * Pneu, * PGewicht, * verb;	//Matrizen und Vektoren der Ausgleichung
+	double v1, v2, bl, blx, bly, blz, ax, ay, az, test, Ambxx, Ambxy, Ambxz;	//Double Werte
+	int konvAusgl, konvGewicht, ii, MatSize = 0, Matii = 0, hh;	//Laufvariablen und temporäre Objekte
 
+	//Variablen der Messwerte/RTKLIB
+	double* y, * e, * azel, * v, * H, * R, * LamList, * Ambx, * Pp;
+	int* MessList;
+	int vflg[MAXOBS * NFREQ * 2 + 1];
+	int ny, nv;
+
+	//Definition von Matrizen
+	Ambx = mat(rtk->nx, 1);
+	y = mat(nf * 2, n); e = mat(3, n), azel = zeros(2, n), Pp = zeros(rtk->nx, rtk->nx);
+	ny = ns * nf * 2 + 2;
+	v = mat(ny, 1); H = zeros(rtk->nx, ny); R = mat(ny, ny);
+
+
+	//Festhalten der Koordinaten abhängig von der bisher berechneten Lösung
+	if (stat == SOLQ_FIX)
+	{
+		//Fix Lösung 
+		memcpy(Ambx, rtk->xa, rtk->nx * 1);
+		for (ii = 0; ii < rtk->nx; ii++) { Ambx[ii] = rtk->xa[ii]; }
+	}
+	else if (stat == SOLQ_FLOAT)
+	{
+		//Float Lösung
+		memcpy(Ambx, rtk->x, rtk->nx * 1);
+		for (ii = 0; ii < rtk->nx; ii++) { Ambx[ii] = rtk->x[ii]; }
+	}
+	else
+	{
+		//Falls weder Fix noch Float Lösung vorhanden ist Abbruch
+		errmsg(rtk, "Ambiguity Function: No Fix or Float solution\n");
+		free(y); free(e); free(azel); free(Pp);
+		free(v); free(H); free(R); free(Ambx); free(vflg);
+		return 0;
+	}
+
+	//Definition von Matrizen
+	A = zeros(3, 2 * ny); l = zeros(2 * ny, 1);
+	LamList = zeros(2 * ny, 1); MessList = zeros(2 * ny, 1);
+	xneu = zeros(3, 1); Pneu = zeros(3, 3);
+	PGewicht = zeros(2 * ny, 2 * ny), verb = mat(2 * ny, 1);
+
+	//Berechnung der Initialen Baseline aus Koordinaten
+	blx = Ambx[0] - rtk->rb[0];
+	bly = Ambx[1] - rtk->rb[1];
+	blz = Ambx[2] - rtk->rb[2];
+
+	//blx = 0.0;
+	//bly = 0.0;
+	//blz = 0.0;
+
+	//blx = 4146334.0447 - rtk->rb[0];
+	//bly = 611809.0022 - rtk->rb[1];
+	//blz = 4791825.5040 - rtk->rb[2];
+
+	//Schleife für die Konvergenz der Ausgleichung
+	//Abbruchkriterium:
+	//MAXKONV = Maximale Anzahl der Schleifendurchläufe
+	//KONVGRENZE = Abbruchkriterium für berechnete Zuschläge
+	for (konvAusgl = 0; konvAusgl < MAXKONV; konvAusgl++)
+	{
+		//Neuberechnen der Koordinaten mit neuer Baseline
+		Ambx[0] = rtk->rb[0] + blx;
+		Ambx[1] = rtk->rb[1] + bly;
+		Ambx[2] = rtk->rb[2] + blz;
+
+		//Berechnung der Basis
+		if (!zdres_Widelane(1, obs + nu, nr, rs + nu * 6, dts + nu * 2, svh + nu, nav, rtk->rb, opt, 1,
+			y + nu * nf * 2, e + nu * 3, azel + nu * 2)) {
+			errmsg(rtk, "Ambiguity Function: initial base station position error\n");
+			free(y); free(e); free(azel); free(Pp);
+			free(v); free(H); free(R); free(Ambx);
+			free(A); free(l); free(LamList); free(MessList);
+			free(xneu); free(Pneu);
+			free(PGewicht); free(verb);
+			return 0;
+		}
+
+		//Neuberechnung von:
+		//y = Beobachtung(gemessen) - Beobachtung(berechnet)
+		//e = (Position_Satellit - Position_Rover)/Strecke_Satellit-Rover
+		if (!zdres_Widelane(0, obs, nu, rs, dts, svh, nav, Ambx, opt, 0, y, e, azel)) {
+			errmsg(rtk, "Ambiguity Function: rover position error\n");
+			free(y); free(e); free(azel); free(Pp);
+			free(v); free(H); free(R); free(Ambx);
+			free(A); free(l); free(LamList); free(MessList);
+			free(xneu); free(Pneu);
+			free(PGewicht); free(verb);
+			return 0;
+		}
+
+		//Neuberechnung der Doppeldifferenzen
+		//Neuberechnung von:
+		//v = (y_Rover_RefSat - y_Basis_RefSat) - (y_Rover_Sati - y_Basis_Sati) = Doppeldifferenz
+		//H = e_Rover_RefSat - e_Rover_Sati
+		//LamList = lambda 
+		//MessList = Wert welcher die Art der Messung angibt: Messlist < nf == Trägerphasenmessung, MessList >= nf == Pseudorangemessung
+		nv = AmbFunc_ddres_Widelane(rtk, nav, dt, Ambx, Pp, sat, y, e, azel, iu, ir, ns, v, H, R, vflg, LamList, MessList);
+		if (nv < 1)
+		{
+			errmsg(rtk, "Ambiguity Function: no double-differenced residual\n");
+			free(y); free(e); free(azel); free(Pp);
+			free(v); free(H); free(R); free(Ambx);
+			free(A); free(l); free(LamList); free(MessList);
+			free(xneu); free(Pneu);
+			free(PGewicht); free(verb);
+			return 0;
+		}
+		//Aufstellen der Design Matrix
+		//Aufgestellt wird die transponierte Design Matrix
+		//Column Major Order
+		Matii = 0;
+		for (ii = 0; ii < nv; ii++)
+		{
+			//Nicht beachten von Pseudorange Messungen
+			//Nur weitermachen, falls Trägerphasenmessung (MessList<nf)
+			if (MessList[ii] > 0) continue;
+			//Richtungskosinus
+			ax = -H[0 + ii * rtk->nx];
+			ay = -H[1 + ii * rtk->nx];
+			az = -H[2 + ii * rtk->nx];
+			/*Ambiguity Function Modell Verbesserungsgleichungen*/
+			v1 = cos(2.0 * PI / Lambda * (-Lambda*v[ii] - (ax * dx + ay * dy + az * dz)));
+			v2 = sin(2.0 * PI / Lambda * (-Lambda*v[ii] - (ax * dx + ay * dy + az * dz)));
+			/*Realteil = Verbesserungsgleichung v1*/
+			A[0 + Matii * 6] = 2.0 * PI / Lambda * v2 * ax;
+			A[1 + Matii * 6] = 2.0 * PI / Lambda * v2 * ay;
+			A[2 + Matii * 6] = 2.0 * PI / Lambda * v2 * az;
+			l[0 + Matii * 2] = v1 - 1.0;
+			/*Imaginärteil = Verbesserungsgleichung v2*/
+			A[3 + Matii * 6] = -2.0 * PI / Lambda * v1 * ax;
+			A[4 + Matii * 6] = -2.0 * PI / Lambda * v1 * ay;
+			A[5 + Matii * 6] = -2.0 * PI / Lambda * v1 * az;
+			l[1 + Matii * 2] = v2 - 0.0;
+			Matii++;
+		}
+
+		//Im ersten Durchlauf ist die Gewichtsmatrix eine Einheitsmatrix 
+		if (konvAusgl == 0) { PGewicht = eye(2 * Matii); }
+
+		//Berechnung der Gewichteten Designmatrix für die L1-Norm
+		//Berechnet wird A*P, wobei A die transponierte Designmatrix ist
+		matmul("NN", 3, 2 * Matii, 2 * Matii, 1.0, A, PGewicht, 0.0, A); // A = A*P
+
+		//Kleinste Quadrate Ausgleichung
+		//Zu beachten: A ist die transponierte Design Matrix
+		if (lsq(A, l, 3, 2 * Matii, xneu, Pneu))
+		{
+			errmsg(rtk, "Ambiguity Function: Least Squares failed\n");
+			free(y); free(e); free(azel); free(Pp);
+			free(v); free(H); free(R); free(Ambx);
+			free(A); free(l); free(LamList); free(MessList);
+			free(xneu); free(Pneu);
+			free(PGewicht); free(verb);
+			return 0;
+		}
+
+		//Berechnung der Verbesserungen
+		matmul("TN", 2 * Matii, 1, 3, 1.0, A, xneu, 0.0, verb);
+		for (hh = 0; hh < 2 * Matii; hh++)
+		{
+			verb[hh] = verb[hh] - l[hh];
+			//Neuberechnung der Gewichte
+			PGewicht[hh + 2 * Matii * hh] = 1.0 / (fabs(verb[hh]) + 0.005);
+		}
+
+		//Neuberechnung der Baselinezuschläge und der Baseline
+		dx = dx - xneu[0];
+		dy = dy - xneu[1];
+		dz = dz - xneu[2];
+		blx = blx + dx;
+		bly = bly + dy;
+		blz = blz + dz;
+
+		//Test der Konvergenz der Ausgleichung
+		test = norm(xneu, 3);
+		if (test < KONVGRENZE)
+		{
+			//Speicherung der berechneten Werte
+			rtk->xa[0] = rtk->rb[0] + blx;
+			rtk->xa[1] = rtk->rb[1] + bly;
+			rtk->xa[2] = rtk->rb[2] + blz;
+
+			free(y); free(e); free(azel); free(Pp);
+			free(v); free(H); free(R); free(Ambx);
+			free(A); free(l); free(LamList); free(MessList);
+			free(xneu); free(Pneu);
+			free(PGewicht); free(verb);
+
+			//Rückgabewert: 1 == Ausgleichung ok
+			return 1;
+		}
+
+	}
+
+	free(y); free(e); free(azel); free(Pp);
+	free(v); free(H); free(R); free(Ambx);
+	free(A); free(l); free(LamList); free(MessList);
+	free(xneu); free(Pneu);
+	free(PGewicht); free(verb);
+	//Keine Speicherung des berechneten Werts, wenn die Ausgleichung nicht konvergiert
+	//Rückgabewert: 0 == Ausgleichung nicht ok
+	return 0;
+}
+
+/* undifferenced phase/code residual for satellite ---------------------------*/
+static void zdres_sat_Widelane(int base, double r, const obsd_t* obs, const nav_t* nav,
+	const double* azel, const double* dant,
+	const prcopt_t* opt, double* y)
+{
+	const double* lam = nav->lam[obs->sat - 1];
+	double f1, f2, C1, C2, dant_if;
+	int i, nf = NF(opt);
+
+	if (lam[0] == 0.0 || lam[1] == 0.0) return;
+
+	if (testsnr(base, 0, azel[1], obs->SNR[0] * 0.25, &opt->snrmask) ||
+		testsnr(base, 1, azel[1], obs->SNR[1] * 0.25, &opt->snrmask)) return;
+
+	//f1 = CLIGHT / lam[0];
+	//f2 = CLIGHT / lam[1];
+	C1 = 1.0;
+	C2 = -1.0;
+	dant_if = C1 * dant[0] + C2 * dant[1];
+
+	if (obs->L[0] != 0.0 && obs->L[1] != 0.0) {
+		//Änderung: Entfernung von Lambda
+		y[0] = C1 * obs->L[0] + C2 * obs->L[1] - r - dant_if;
+	}
+	if (obs->P[0] != 0.0 && obs->P[1] != 0.0) {
+		y[1] = C1 * obs->P[0] + C2 * obs->P[1] - r - dant_if;
+	}
+
+}
+
+static int zdres_Widelane(int base, const obsd_t* obs, int n, const double* rs,
+	const double* dts, const int* svh, const nav_t* nav,
+	const double* rr, const prcopt_t* opt, int index, double* y,
+	double* e, double* azel)
+{
+	double r, rr_[3], pos[3], dant[NFREQ] = { 0 }, disp[3];
+	double zhd, zazel[] = { 0.0,90.0 * D2R };
+	int i; //nf = NF(opt);
+	//Änderung wegen Linearkombination
+	int nf = 1;
+
+	trace(3, "zdres   : n=%d\n", n);
+
+	for (i = 0; i < n * nf * 2; i++) y[i] = 0.0;
+
+	if (norm(rr, 3) <= 0.0) return 0; /* no receiver position */
+
+	for (i = 0; i < 3; i++) rr_[i] = rr[i];
+
+	/* earth tide correction */
+	if (opt->tidecorr) {
+		tidedisp(gpst2utc(obs[0].time), rr_, opt->tidecorr, &nav->erp,
+			opt->odisp[base], disp);
+		for (i = 0; i < 3; i++) rr_[i] += disp[i];
+	}
+	ecef2pos(rr_, pos);
+
+	for (i = 0; i < n; i++) {
+		/* compute geometric-range and azimuth/elevation angle */
+		if ((r = geodist(rs + i * 6, rr_, e + i * 3)) <= 0.0) continue;
+		if (satazel(pos, e + i * 3, azel + i * 2) < opt->elmin) continue;
+
+		/* excluded satellite? */
+		if (satexclude(obs[i].sat, svh[i], opt)) continue;
+
+		/* satellite clock-bias */
+		r += -CLIGHT * dts[i * 2];
+
+		/* troposphere delay model (hydrostatic) */
+		zhd = tropmodel(obs[0].time, pos, zazel, 0.0);
+		r += tropmapf(obs[i].time, pos, azel + i * 2, NULL) * zhd;
+
+		/* receiver antenna phase center correction */
+		antmodel(opt->pcvr + index, opt->antdel[index], azel + i * 2, opt->posopt[1],
+			dant);
+
+		/* undifferenced phase/code residual for satellite */
+		zdres_sat_Widelane(base, r, obs + i, nav, azel + i * 2, dant, opt, y + i * nf * 2);
+	}
+	trace(4, "rr_=%.3f %.3f %.3f\n", rr_[0], rr_[1], rr_[2]);
+	trace(4, "pos=%.9f %.9f %.3f\n", pos[0] * R2D, pos[1] * R2D, pos[2]);
+	for (i = 0; i < n; i++) {
+		trace(4, "sat=%2d %13.3f %13.3f %13.3f %13.10f %6.1f %5.1f\n",
+			obs[i].sat, rs[i * 6], rs[1 + i * 6], rs[2 + i * 6], dts[i * 2], azel[i * 2] * R2D,
+			azel[1 + i * 2] * R2D);
+	}
+	trace(4, "y=\n"); tracemat(4, y, nf * 2, n, 13, 3);
+
+	return 1;
+}
+
+/*Ambiguity Function -- Kay Bastian*/
+static int AmbFunc_ddres_Widelane(rtk_t* rtk, const nav_t* nav, double dt, const double* x,
+	const double* P, const int* sat, double* y, double* e,
+	double* azel, const int* iu, const int* ir, int ns, double* v,
+	double* H, double* R, int* vflg, double* LamList, int* MessList)
+{
+	prcopt_t* opt = &rtk->opt;
+	double bl, dr[3], posu[3], posr[3], didxi = 0.0, didxj = 0.0, * im;
+	double* tropr, * tropu, * dtdxr, * dtdxu, * Ri, * Rj, lami, lamj, fi, fj, df, * Hi = NULL;
+	int i, j, k, m, f, ff, nv = 0, nb[NFREQ * 4 * 2 + 2] = { 0 }, b = 0, sysi, sysj; //nf = NF(opt);
+	//Änderung wegen Linearkombination
+	int nf = 1;
+
+	trace(3, "AmbFunc_ddres   : dt=%.1f nx=%d ns=%d\n", dt, rtk->nx, ns);
+
+	bl = baseline(x, rtk->rb, dr);
+	ecef2pos(x, posu); ecef2pos(rtk->rb, posr);
+
+	Ri = zeros(ns * nf * 2 + 2, 1); Rj = zeros(ns * nf * 2 + 2, 1); im = zeros(ns, 1);
+	tropu = zeros(ns, 1); tropr = zeros(ns, 1); dtdxu = zeros(ns, 3); dtdxr = zeros(ns, 3);
+
+	for (i = 0; i < MAXSAT; i++) for (j = 0; j < NFREQ; j++) {
+		rtk->ssat[i].resp[j] = rtk->ssat[i].resc[j] = 0.0;
+	}
+	/* compute factors of ionospheric and tropospheric delay */
+	for (i = 0; i < ns; i++) {
+		if (opt->ionoopt >= IONOOPT_EST) {
+			im[i] = (ionmapf(posu, azel + iu[i] * 2) + ionmapf(posr, azel + ir[i] * 2)) / 2.0;
+		}
+		if (opt->tropopt >= TROPOPT_EST) {
+			tropu[i] = prectrop(rtk->sol.time, posu, 0, azel + iu[i] * 2, opt, x, dtdxu + i * 3);
+			tropr[i] = prectrop(rtk->sol.time, posr, 1, azel + ir[i] * 2, opt, x, dtdxr + i * 3);
+		}
+	}
+	for (m = 0; m < 5; m++) /* m=0:gps/sbs,1:glo,2:gal,3:bds,4:qzs */
+
+		for (f = opt->mode > PMODE_DGPS ? 0 : nf; f < nf * 2; f++) {
+
+			/* search reference satellite with highest elevation */
+			for (i = -1, j = 0; j < ns; j++) {
+				sysi = rtk->ssat[sat[j] - 1].sys;
+				if (!test_sys(sysi, m)) continue;
+				if (!validobs(iu[j], ir[j], f, nf, y)) continue;
+				if (i < 0 || azel[1 + iu[j] * 2] >= azel[1 + iu[i] * 2]) i = j;
+			}
+			if (i < 0) continue;
+
+			/* make double difference */
+			for (j = 0; j < ns; j++) {
+				if (i == j) continue;
+				sysi = rtk->ssat[sat[i] - 1].sys;
+				sysj = rtk->ssat[sat[j] - 1].sys;
+				if (!test_sys(sysj, m)) continue;
+				if (!validobs(iu[j], ir[j], f, nf, y)) continue;
+
+				ff = f % nf;
+				lami = nav->lam[sat[i] - 1][ff];
+				lamj = nav->lam[sat[j] - 1][ff];
+				if (lami <= 0.0 || lamj <= 0.0) continue;
+				if (H) Hi = H + nv * rtk->nx;
+
+				/* double-differenced residual */
+				v[nv] = (y[f + iu[i] * nf * 2] - y[f + ir[i] * nf * 2]) -
+					(y[f + iu[j] * nf * 2] - y[f + ir[j] * nf * 2]);
+
+				/*Liste der verwendeten Lambdas und Messungen f<nf = Phasenmessung, f => nf = Pseudorangemessung*/
+				LamList[nv] = lami;
+				MessList[nv] = f;
+
+				/* partial derivatives by rover position */
+				if (H) {
+					for (k = 0; k < 3; k++) {
+						Hi[k] = -e[k + iu[i] * 3] + e[k + iu[j] * 3];
+					}
+				}
+				/* double-differenced ionospheric delay term */
+				if (opt->ionoopt == IONOOPT_EST) {
+					fi = lami / lam_carr[0]; fj = lamj / lam_carr[0];
+					didxi = (f < nf ? -1.0 : 1.0) * fi * fi * im[i];
+					didxj = (f < nf ? -1.0 : 1.0) * fj * fj * im[j];
+					v[nv] -= didxi * x[II(sat[i], opt)] - didxj * x[II(sat[j], opt)];
+					if (H) {
+						Hi[II(sat[i], opt)] = didxi;
+						Hi[II(sat[j], opt)] = -didxj;
+					}
+				}
+				/* double-differenced tropospheric delay term */
+				if (opt->tropopt == TROPOPT_EST || opt->tropopt == TROPOPT_ESTG) {
+					v[nv] -= (tropu[i] - tropu[j]) - (tropr[i] - tropr[j]);
+					for (k = 0; k < (opt->tropopt < TROPOPT_ESTG ? 1 : 3); k++) {
+						if (!H) continue;
+						Hi[IT(0, opt) + k] = (dtdxu[k + i * 3] - dtdxu[k + j * 3]);
+						Hi[IT(1, opt) + k] = -(dtdxr[k + i * 3] - dtdxr[k + j * 3]);
+					}
+				}
+				/* double-differenced phase-bias term */
+				if (f < nf) {
+					if (opt->ionoopt != IONOOPT_IFLC) {
+						//v[nv] -= lami * x[IB(sat[i], f, opt)] - lamj * x[IB(sat[j], f, opt)];
+						double test1 = x[IB(sat[i], f, opt)];
+						double test2 = x[IB(sat[j], f, opt)];
+						if (H) {
+							Hi[IB(sat[i], f, opt)] = lami;
+							Hi[IB(sat[j], f, opt)] = -lamj;
+						}
+					}
+					else {
+						v[nv] -= x[IB(sat[i], f, opt)] - x[IB(sat[j], f, opt)];
+						if (H) {
+							Hi[IB(sat[i], f, opt)] = 1.0;
+							Hi[IB(sat[j], f, opt)] = -1.0;
+						}
+					}
+				}
+				/* glonass receiver h/w bias term */
+				if (rtk->opt.glomodear == 2 && sysi == SYS_GLO && sysj == SYS_GLO && ff < NFREQGLO) {
+					df = (CLIGHT / lami - CLIGHT / lamj) / 1E6; /* freq-difference (MHz) */
+					v[nv] -= df * x[IL(ff, opt)];
+					if (H) Hi[IL(ff, opt)] = df;
+				}
+				/* glonass interchannel bias correction */
+				else if (sysi == SYS_GLO && sysj == SYS_GLO) {
+
+					v[nv] -= gloicbcorr(sat[i], sat[j], &rtk->opt, lami, lamj, f);
+				}
+				if (f < nf) rtk->ssat[sat[j] - 1].resc[f] = v[nv];
+				else      rtk->ssat[sat[j] - 1].resp[f - nf] = v[nv];
+
+				/* test innovation */
+				/*if (opt->maxinno > 0.0 && fabs(v[nv]) > opt->maxinno) {
+					if (f < nf) {
+						rtk->ssat[sat[i] - 1].rejc[f]++;
+						rtk->ssat[sat[j] - 1].rejc[f]++;
+					}
+					errmsg(rtk, "outlier rejected (sat=%3d-%3d %s%d v=%.3f)\n",
+						sat[i], sat[j], f < nf ? "L" : "P", f % nf + 1, v[nv]);
+					continue;
+				}*/
+				/* single-differenced measurement error variances */
+				Ri[nv] = varerr(sat[i], sysi, azel[1 + iu[i] * 2], bl, dt, f, opt);
+				Rj[nv] = varerr(sat[j], sysj, azel[1 + iu[j] * 2], bl, dt, f, opt);
+
+				/* set valid data flags */
+				if (opt->mode > PMODE_DGPS) {
+					if (f < nf) rtk->ssat[sat[i] - 1].vsat[f] = rtk->ssat[sat[j] - 1].vsat[f] = 1;
+				}
+				else {
+					rtk->ssat[sat[i] - 1].vsat[f - nf] = rtk->ssat[sat[j] - 1].vsat[f - nf] = 1;
+				}
+				trace(4, "sat=%3d-%3d %s%d v=%13.3f R=%8.6f %8.6f\n", sat[i],
+					sat[j], f < nf ? "L" : "P", f % nf + 1, v[nv], Ri[nv], Rj[nv]);
+
+				vflg[nv++] = (sat[i] << 16) | (sat[j] << 8) | ((f < nf ? 0 : 1) << 4) | (f % nf);
+				nb[b]++;
+			}
+#if 0 /* residuals referenced to reference satellite (2.4.2 p11) */
+			/* restore single-differenced residuals assuming sum equal zero */
+			if (f < nf) {
+				for (j = 0, s = 0.0; j < MAXSAT; j++) s += rtk->ssat[j].resc[f];
+				s /= nb[b] + 1;
+				for (j = 0; j < MAXSAT; j++) {
+					if (j == sat[i] - 1 || rtk->ssat[j].resc[f] != 0.0) rtk->ssat[j].resc[f] -= s;
+				}
+			}
+			else {
+				for (j = 0, s = 0.0; j < MAXSAT; j++) s += rtk->ssat[j].resp[f - nf];
+				s /= nb[b] + 1;
+				for (j = 0; j < MAXSAT; j++) {
+					if (j == sat[i] - 1 || rtk->ssat[j].resp[f - nf] != 0.0)
+						rtk->ssat[j].resp[f - nf] -= s;
+				}
+			}
+#endif
+			b++;
+		}
+	/* end of system loop */
+
+	/* baseline length constraint for moving baseline */
+	if (opt->mode == PMODE_MOVEB && constbl(rtk, x, P, v, H, Ri, Rj, nv)) {
+		vflg[nv++] = 3 << 4;
+		nb[b++]++;
+	}
+	if (H) { trace(5, "H=\n"); tracemat(5, H, rtk->nx, nv, 7, 4); }
+
+	/* double-differenced measurement error covariance */
+	ddcov(nb, b, Ri, Rj, nv, R);
+
+	if (Ri) { free(Ri); Ri = NULL; }
+	if (Rj) { free(Rj); Rj = NULL; }
+	if (dtdxu) { free(dtdxu); dtdxu = NULL; }
+	if (dtdxr) { free(dtdxr); dtdxr = NULL; }
+	if (im) { free(im); im = NULL; }
+	if (tropu) { free(tropu); tropu = NULL; }
+	if (tropr) { free(tropr); tropr = NULL; }
+
+	return nv;
+}
